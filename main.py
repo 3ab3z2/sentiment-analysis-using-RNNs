@@ -1,56 +1,67 @@
+import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, SimpleRNN, Dense
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-import numpy as np
 
-# Load your dataset
-texts = ["I love this product", "This is the worst experience", "Absolutely fantastic!", "Not good at all"]
-labels = ["positive", "negative", "positive", "negative"]
+# Load and preprocess the dataset
+def load_data(file_path):
+    data = pd.read_csv(file_path)
+    # Ensure 'text' column is string and handle NaN values
+    data['text'] = data['text'].fillna('').astype(str)
+    texts = data['text'].values
+    labels = data['label'].values
+    return texts, labels
 
-# Preprocess the labels
-label_encoder = LabelEncoder()
-encoded_labels = label_encoder.fit_transform(labels)
+# Paths to datasets
+train_dataset_path = 'archive/generic_sentiment_dataset_50k.csv'
+test_dataset_path = 'archive/generic_sentiment_dataset_10k.csv'
 
-# Tokenize the text data
+# Load datasets
+train_texts, train_labels = load_data(train_dataset_path)
+test_texts, test_labels = load_data(test_dataset_path)
+
+# Tokenize and pad sequences
 tokenizer = Tokenizer(num_words=10000, oov_token="<OOV>")
-tokenizer.fit_on_texts(texts)
-sequences = tokenizer.texts_to_sequences(texts)
-padded_sequences = pad_sequences(sequences, maxlen=100, padding='post', truncating='post')
+tokenizer.fit_on_texts(train_texts)
+train_sequences = tokenizer.texts_to_sequences(train_texts)
+test_sequences = tokenizer.texts_to_sequences(test_texts)
 
-# Split the data
-X_train, X_test, y_train, y_test = train_test_split(padded_sequences, encoded_labels, test_size=0.2, random_state=42)
+train_padded = pad_sequences(train_sequences, maxlen=100, padding='post', truncating='post')
+test_padded = pad_sequences(test_sequences, maxlen=100, padding='post', truncating='post')
 
 # Build the RNN model
 model = Sequential([
     Embedding(input_dim=10000, output_dim=64, input_length=100),
     SimpleRNN(64, return_sequences=False),
-    Dense(32, activation='relu'),
-    Dense(1, activation='sigmoid')
+    Dense(64, activation='relu'),
+    Dense(3, activation='softmax')  # 3 classes: negative, neutral, positive
 ])
 
-# Compile the model
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
 # Train the model
-model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=32)
+model.fit(train_padded, train_labels, epochs=5, validation_data=(test_padded, test_labels), batch_size=32)
 
-# Evaluate the model
-loss, accuracy = model.evaluate(X_test, y_test)
-print(f"Test Accuracy: {accuracy}")
+# Save the model
+model.save('sentiment_rnn_model.h5')
 
-# Function to preprocess and predict sentiment for new input
-def predict_sentiment(input_text):
-    input_sequence = tokenizer.texts_to_sequences([input_text])
-    input_padded = pad_sequences(input_sequence, maxlen=100, padding='post', truncating='post')
-    prediction = model.predict(input_padded)[0][0]
-    sentiment = "positive" if prediction > 0.5 else "negative"
-    print(f"Input: {input_text}")
-    print(f"Predicted Sentiment: {sentiment} (Confidence: {prediction:.2f})")
+# Load the model for evaluation
+def evaluate_input():
+    model = tf.keras.models.load_model('sentiment_rnn_model.h5')
+    while True:
+        user_input = input("Enter a sentence for sentiment analysis (or type 'exit' to quit): ")
+        if user_input.lower() == 'exit':
+            break
+        input_sequence = tokenizer.texts_to_sequences([user_input])
+        input_padded = pad_sequences(input_sequence, maxlen=100, padding='post', truncating='post')
+        prediction = model.predict(input_padded)
+        sentiment = np.argmax(prediction)
+        sentiment_label = {0: "Negative", 1: "Neutral", 2: "Positive"}
+        print(f"Sentiment: {sentiment_label[sentiment]}")
 
-# Take input from the user
-user_input = input("Enter a sentence to evaluate its sentiment: ")
-predict_sentiment(user_input)
+# Run evaluation
+if __name__ == "__main__":
+    evaluate_input()
