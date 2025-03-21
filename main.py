@@ -1,4 +1,5 @@
 import numpy as np
+import re
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -11,6 +12,13 @@ def load_data(file_path):
     data = pd.read_csv(file_path)
     # Ensure 'text' column is string and handle NaN values
     data['text'] = data['text'].fillna('').astype(str)
+    # Replace any extra characters with a dot
+    data['text'] = re.sub(r'[,!?;-]+', '.', data['text'])
+    # Repalce all captials to lowers
+    data['text'] = [ ch.lower() for ch in data['text']
+         if ch.isalpha()
+         or ch == '.'
+       ]
     texts = data['text'].values
     labels = data['label'].values
     return texts, labels
